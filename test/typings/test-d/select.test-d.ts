@@ -1,5 +1,8 @@
+import { expectError, expectType } from 'tsd'
 import {
+  ColumnType,
   Expression,
+  Generated,
   Kysely,
   NotNull,
   RawBuilder,
@@ -7,8 +10,7 @@ import {
   Simplify,
   sql,
 } from '..'
-import { Database, Person } from '../shared'
-import { expectType, expectError } from 'tsd'
+import { Database, Person, PersonMetadata } from '../shared'
 
 async function testSelectSingle(db: Kysely<Database>) {
   const qb = db.selectFrom('person')
@@ -132,6 +134,47 @@ async function testSelectSingle(db: Kysely<Database>) {
 
   expectType<string>(r17.callback_url)
   expectType<string>(r17.queue_id)
+}
+
+type Json = JsonValue
+
+type JsonArray = JsonValue[]
+
+type JsonObject = {
+  [K in string]?: JsonValue
+}
+
+type JsonPrimitive = boolean | number | string | null
+
+type JsonValue = JsonArray | JsonObject | JsonPrimitive
+type ArrayType<T> =
+  ArrayTypeImpl<T> extends (infer U)[] ? U[] : ArrayTypeImpl<T>
+
+type ArrayTypeImpl<T> =
+  T extends ColumnType<infer S, infer I, infer U>
+    ? ColumnType<S[], I[], U[]>
+    : T[]
+type PGGenDatabase = Omit<Database, 'person_metadata'> & {
+  person_metadata: Omit<PersonMetadata, 'experience'> & {
+    experience: Generated<ArrayType<Json>>
+  }
+}
+async function testSelectConflicts(db: Kysely<PGGenDatabase>) {
+  const r1 = await db
+    .selectFrom('person_metadata')
+    .select('experience')
+    .select(({ fn }) => [
+      fn<{ establishment: string }[]>('to_json', ['experience']).as(
+        'experience',
+      ),
+    ])
+    .executeTakeFirstOrThrow()
+
+  expectType<{
+    experience: {
+      establishment: string
+    }[]
+  }>(r1)
 }
 
 async function testSelectAll(db: Kysely<Database>) {
